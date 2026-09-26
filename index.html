@@ -6,14 +6,14 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0A0E14">
-<title>에코 주행 · 40분</title>
+<title>에코 러닝 · 40분</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root{
     --bg:#0A0E14; --card:#12181F; --line:#1E2733;
     --text:#E7ECF2; --muted:#7C8895;
-    --phase:#5B8DEF; /* changes dynamically per phase */
+    --phase:#5B8DEF;
   }
   *{box-sizing:border-box; margin:0; padding:0;}
   html,body{height:100%;}
@@ -29,7 +29,7 @@
 
   h1{font-size:15px; font-weight:600; color:var(--muted); letter-spacing:.02em; text-align:center; margin-bottom:22px;}
 
-  .timeline{display:flex; gap:4px; margin-bottom:28px;}
+  .timeline{display:flex; gap:4px; margin-bottom:6px;}
   .seg{flex:1; height:6px; border-radius:3px; background:var(--line); position:relative; overflow:hidden;}
   .seg .fill{position:absolute; left:0; top:0; bottom:0; width:0%; background:var(--phase); transition:background .8s ease;}
   .seg.done .fill{width:100%;}
@@ -38,7 +38,7 @@
 
   .stage-card{
     background:var(--card); border:1px solid var(--line); border-radius:18px;
-    padding:32px 24px; text-align:center; margin-bottom:20px;
+    padding:32px 24px; text-align:center; margin-bottom:16px; margin-top:22px;
   }
   .stage-name{font-size:14px; color:var(--muted); margin-bottom:4px;}
   .stage-title{font-size:22px; font-weight:600; margin-bottom:22px; color:var(--phase); transition:color .8s ease;}
@@ -52,7 +52,14 @@
   .target .num{font-family:'IBM Plex Mono',monospace; font-size:20px; font-weight:700;}
   .target .lbl{font-size:11px; color:var(--muted); margin-top:2px;}
 
-  .total{display:flex; justify-content:space-between; font-size:13px; color:var(--muted); padding:0 4px; margin-bottom:24px;}
+  .cue-note{
+    background:var(--card); border:1px solid var(--line); border-radius:14px;
+    padding:14px 18px; font-size:13px; color:var(--text); margin-bottom:16px;
+    display:flex; align-items:center; gap:10px; min-height:20px;
+  }
+  .cue-note .dot{width:7px; height:7px; border-radius:50%; background:var(--phase); flex:none; transition:background .8s ease;}
+
+  .total{display:flex; justify-content:space-between; font-size:13px; color:var(--muted); padding:0 4px; margin-bottom:20px;}
   .total b{color:var(--text); font-family:'IBM Plex Mono',monospace;}
 
   .controls{display:flex; gap:10px;}
@@ -71,7 +78,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>에코 주행 · 40분 프로그램</h1>
+  <h1>에코 러닝 · 40분 프로그램</h1>
 
   <div class="seg-labels" id="segLabels"></div>
   <div class="timeline" id="timeline"></div>
@@ -83,6 +90,8 @@
     <div class="timer-sub" id="stageDesc">단계 남은 시간</div>
     <div class="targets" id="targets"></div>
   </div>
+
+  <div class="cue-note" id="cueNote"><span class="dot"></span><span id="cueText">시작하면 구간별 안내가 여기에 표시됩니다</span></div>
 
   <div class="total">
     <span>총 경과 <b id="elapsed">00:00</b></span>
@@ -102,34 +111,71 @@
 </div>
 
 <script>
+// cues: 각 구간 시작(t=0)부터 경과 초 기준. text는 화면 표시 + 음성 재생 둘 다에 쓰임.
 const phases = [
-  {name:"1 · 웜업", title:"천천히 몸 풀기", sec:300, color:"#5B8DEF",
-   speed:"4→6", hr:"~128",
-   say:"웜업을 시작합니다. 걷기로 시작해서 천천히 조깅으로 넘어가세요. 서두르지 마세요.",
-   mid:null},
-  {name:"2 · 페이스 진입", title:"목표 페이스로 진입", sec:300, color:"#4FC3D9",
-   speed:"6.5→7", hr:"<144",
-   say:"페이스 진입 구간입니다. 심박이 백사십사를 넘지 않는지 확인하면서 속도를 올리세요.",
-   mid:null},
-  {name:"3 · 메인 유지", title:"에코 페이스 고정", sec:1080, color:"#F2C14E",
-   speed:"7~7.5", hr:"128–144",
-   say:"메인 구간입니다. 이 페이스를 십팔분 동안 유지하세요. 속도를 올리고 싶어져도 참으세요.",
-   mid:"절반 지났습니다. 심박이 백사십사에 가까우면 속도를 0.5 낮추세요."},
-  {name:"4 · 선택 업", title:"컨디션 되면 살짝 업", sec:420, color:"#E8845A",
-   speed:"7.5→8", hr:"~144",
-   say:"컨디션이 괜찮다면 속도를 살짝 올려도 좋습니다. 심박이 백사십사를 넘으면 바로 0.5 낮추세요.",
-   mid:null},
-  {name:"5 · 쿨다운", title:"천천히 마무리", sec:300, color:"#7C8895",
-   speed:"4→5", hr:"낮추기",
-   say:"쿨다운입니다. 속도를 천천히 낮추고 심박을 안정시키세요.",
-   mid:null},
+  {name:"1 · 웜업", title:"천천히 몸 풀기", sec:300, color:"#5B8DEF", speed:"4~6", hr:"~128",
+   cues:[
+     {at:0,   text:"웜업을 시작합니다. 4에서 5킬로미터 속도로 걸어주세요."},
+     {at:180, text:"3분 지났습니다. 5.5에서 6킬로미터로 가볍게 조깅해주세요."},
+   ]},
+  {name:"2 · 페이스 진입", title:"목표 페이스로 진입", sec:300, color:"#4FC3D9", speed:"6.5~7", hr:"<144",
+   cues:[
+     {at:0, text:"페이스 진입 구간입니다. 6.5에서 7킬로미터로 속도를 올리세요."},
+     {at:150, text:"심박이 144를 넘지 않는지 확인하세요."},
+   ]},
+  {name:"3 · 메인 유지", title:"에코 페이스 고정", sec:1080, color:"#F2C14E", speed:"7~7.5", hr:"128–144",
+   cues:[
+     {at:0,   text:"메인 구간입니다. 7에서 7.5킬로미터 페이스를 18분 동안 유지하세요."},
+     {at:540, text:"절반 지났습니다. 심박이 144에 가까우면 속도를 0.5 낮추세요."},
+     {at:900, text:"3분 남았습니다. 페이스 그대로 유지하세요."},
+   ]},
+  {name:"4 · 선택 업", title:"컨디션 되면 살짝 업", sec:420, color:"#E8845A", speed:"7.5~8", hr:"~144",
+   cues:[
+     {at:0,   text:"컨디션이 괜찮다면 7.5에서 8킬로미터로 살짝 올려도 좋습니다."},
+     {at:210, text:"심박이 144를 넘으면 바로 0.5 낮추세요."},
+   ]},
+  {name:"5 · 쿨다운", title:"천천히 마무리", sec:300, color:"#7C8895", speed:"4~5", hr:"낮추기",
+   cues:[
+     {at:0,   text:"쿨다운입니다. 4에서 5킬로미터로 천천히 속도를 낮추세요."},
+     {at:240, text:"마지막 1분입니다. 3에서 4킬로미터로 마무리하세요."},
+   ]},
 ];
-const totalSec = phases.reduce((a,p)=>a+p.sec,0);
 
-let curPhase=0, remainInPhase=phases[0].sec, elapsed=0, running=false, timerId=null, midSaid=false;
+let curPhase=0, phaseElapsed=0, elapsed=0, running=false, timerId=null;
+let firedCues = new Set();
+let voice = null;
 
 const el = id => document.getElementById(id);
 const fmt = s => String(Math.floor(s/60)).padStart(2,'0')+":"+String(s%60).padStart(2,'0');
+
+function pickVoice(){
+  if(!('speechSynthesis' in window)) return;
+  const voices = speechSynthesis.getVoices().filter(v=>v.lang && v.lang.toLowerCase().startsWith('ko'));
+  if(!voices.length) return;
+  // 남성 톤 우선: 이름에 male/남성 포함, female/여성 제외
+  const male = voices.find(v=>/male|남성|man/i.test(v.name) && !/female|여성/i.test(v.name));
+  voice = male || voices[0];
+}
+if('speechSynthesis' in window){
+  pickVoice();
+  speechSynthesis.onvoiceschanged = pickVoice;
+}
+
+function speak(text){
+  if(el('muteBox').checked) return;
+  if(!('speechSynthesis' in window)) return;
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang='ko-KR';
+  if(voice) u.voice = voice;
+  u.pitch = 0.9;   // 낮고 밝은 톤
+  u.rate = 1.05;
+  speechSynthesis.cancel();
+  speechSynthesis.speak(u);
+}
+
+function showCue(text){
+  el('cueText').textContent = text;
+}
 
 function buildTimeline(){
   const tl = el('timeline'), lb = el('segLabels');
@@ -143,48 +189,46 @@ function buildTimeline(){
   });
 }
 
-function speak(text){
-  if(el('muteBox').checked) return;
-  if(!('speechSynthesis' in window)) return;
-  const u = new SpeechSynthesisUtterance(text);
-  u.lang='ko-KR'; u.rate=1.0;
-  speechSynthesis.cancel();
-  speechSynthesis.speak(u);
-}
-
 function renderPhase(){
   const p = phases[curPhase];
+  const remain = p.sec - phaseElapsed;
   document.body.style.setProperty('--phase', p.color);
   el('stageName').textContent = p.name;
   el('stageTitle').textContent = p.title;
-  el('timer').textContent = fmt(remainInPhase);
+  el('timer').textContent = fmt(remain);
   el('targets').innerHTML =
     '<div class="target"><div class="num">'+p.speed+'</div><div class="lbl">km/h</div></div>'+
     '<div class="target"><div class="num">'+p.hr+'</div><div class="lbl">목표 심박</div></div>';
   document.querySelectorAll('.seg').forEach((s,i)=>{
     s.classList.toggle('done', i<curPhase);
     const fill = s.querySelector('.fill');
-    if(i===curPhase){ fill.style.width = ((p.sec-remainInPhase)/p.sec*100)+'%'; fill.style.background=p.color; }
+    if(i===curPhase){ fill.style.width = (phaseElapsed/p.sec*100)+'%'; fill.style.background=p.color; }
     else if(i>curPhase){ fill.style.width='0%'; }
   });
   el('elapsed').textContent = fmt(elapsed);
 }
 
-function tick(){
-  remainInPhase--; elapsed++;
+function checkCues(){
   const p = phases[curPhase];
-  if(p.mid && !midSaid && remainInPhase === Math.floor(p.sec/2)){
-    speak(p.mid); midSaid = true;
-  }
-  if(remainInPhase <= 0){
-    curPhase++;
-    if(curPhase >= phases.length){
-      finish(); return;
+  const key = curPhase+'-';
+  p.cues.forEach(c=>{
+    const id = key+c.at;
+    if(phaseElapsed === c.at && !firedCues.has(id)){
+      firedCues.add(id);
+      showCue(c.text);
+      speak(c.text);
     }
-    remainInPhase = phases[curPhase].sec;
-    midSaid = false;
-    speak(phases[curPhase].say);
+  });
+}
+
+function tick(){
+  phaseElapsed++; elapsed++;
+  if(phaseElapsed >= phases[curPhase].sec){
+    curPhase++;
+    if(curPhase >= phases.length){ finish(); return; }
+    phaseElapsed = 0;
   }
+  checkCues();
   renderPhase();
 }
 
@@ -193,16 +237,15 @@ function finish(){
   el('mainCard').style.display='none';
   el('doneMsg').style.display='block';
   el('startBtn').textContent='다시 시작';
+  showCue("완료했습니다.");
   speak("수고하셨습니다. 오늘 러닝을 완료했습니다.");
 }
 
 el('startBtn').addEventListener('click', ()=>{
-  if(el('doneMsg').style.display==='block'){
-    resetAll(); return;
-  }
+  if(el('doneMsg').style.display==='block'){ resetAll(); return; }
   if(!running){
     running=true; el('startBtn').textContent='일시정지';
-    if(elapsed===0 && curPhase===0 && remainInPhase===phases[0].sec){ speak(phases[0].say); }
+    if(elapsed===0 && curPhase===0 && phaseElapsed===0){ checkCues(); }
     timerId = setInterval(tick, 1000);
   } else {
     running=false; el('startBtn').textContent='계속'; clearInterval(timerId);
@@ -211,10 +254,11 @@ el('startBtn').addEventListener('click', ()=>{
 
 function resetAll(){
   clearInterval(timerId); running=false;
-  curPhase=0; remainInPhase=phases[0].sec; elapsed=0; midSaid=false;
+  curPhase=0; phaseElapsed=0; elapsed=0; firedCues=new Set();
   el('startBtn').textContent='시작';
   el('mainCard').style.display='block';
   el('doneMsg').style.display='none';
+  showCue("시작하면 구간별 안내가 여기에 표시됩니다");
   buildTimeline();
   renderPhase();
 }
