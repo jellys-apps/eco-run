@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0A0E14">
+<title>에코 주행 · 40분</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0A0E14; --card:#12181F; --line:#1E2733;
+    --text:#E7ECF2; --muted:#7C8895;
+    --phase:#5B8DEF; /* changes dynamically per phase */
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{height:100%;}
+  body{
+    background:var(--bg); color:var(--text);
+    font-family:'Inter',sans-serif;
+    padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+    display:flex; flex-direction:column; align-items:center;
+    min-height:100%; padding-left:20px; padding-right:20px;
+    transition:background .8s ease;
+  }
+  .wrap{width:100%; max-width:420px; padding:28px 0 40px;}
+
+  h1{font-size:15px; font-weight:600; color:var(--muted); letter-spacing:.02em; text-align:center; margin-bottom:22px;}
+
+  .timeline{display:flex; gap:4px; margin-bottom:28px;}
+  .seg{flex:1; height:6px; border-radius:3px; background:var(--line); position:relative; overflow:hidden;}
+  .seg .fill{position:absolute; left:0; top:0; bottom:0; width:0%; background:var(--phase); transition:background .8s ease;}
+  .seg.done .fill{width:100%;}
+  .seg-labels{display:flex; justify-content:space-between; margin-bottom:6px;}
+  .seg-labels span{font-size:10px; color:var(--muted); width:100%; text-align:center;}
+
+  .stage-card{
+    background:var(--card); border:1px solid var(--line); border-radius:18px;
+    padding:32px 24px; text-align:center; margin-bottom:20px;
+  }
+  .stage-name{font-size:14px; color:var(--muted); margin-bottom:4px;}
+  .stage-title{font-size:22px; font-weight:600; margin-bottom:22px; color:var(--phase); transition:color .8s ease;}
+  .timer{font-family:'IBM Plex Mono',monospace; font-size:64px; font-weight:700; line-height:1; letter-spacing:-0.02em;}
+  .timer-sub{margin-top:10px; font-size:13px; color:var(--muted);}
+  .targets{
+    display:flex; justify-content:center; gap:28px; margin-top:22px;
+    padding-top:20px; border-top:1px solid var(--line);
+  }
+  .target{text-align:center;}
+  .target .num{font-family:'IBM Plex Mono',monospace; font-size:20px; font-weight:700;}
+  .target .lbl{font-size:11px; color:var(--muted); margin-top:2px;}
+
+  .total{display:flex; justify-content:space-between; font-size:13px; color:var(--muted); padding:0 4px; margin-bottom:24px;}
+  .total b{color:var(--text); font-family:'IBM Plex Mono',monospace;}
+
+  .controls{display:flex; gap:10px;}
+  button{
+    flex:1; padding:16px; border-radius:14px; border:none; font-size:15px; font-weight:600;
+    font-family:'Inter',sans-serif; cursor:pointer; -webkit-tap-highlight-color:transparent;
+  }
+  #startBtn{background:var(--phase); color:#0A0E14; transition:background .8s ease;}
+  #resetBtn{background:var(--card); color:var(--muted); border:1px solid var(--line);}
+  .mute-row{display:flex; align-items:center; justify-content:center; gap:8px; margin-top:18px;}
+  .mute-row label{font-size:13px; color:var(--muted); display:flex; align-items:center; gap:8px; cursor:pointer;}
+  .mute-row input{width:16px; height:16px;}
+
+  .done-msg{display:none; text-align:center; padding:40px 0; color:var(--muted); font-size:14px; line-height:1.6;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>에코 주행 · 40분 프로그램</h1>
+
+  <div class="seg-labels" id="segLabels"></div>
+  <div class="timeline" id="timeline"></div>
+
+  <div class="stage-card" id="mainCard">
+    <div class="stage-name" id="stageName">준비</div>
+    <div class="stage-title" id="stageTitle">시작 버튼을 눌러주세요</div>
+    <div class="timer" id="timer">00:00</div>
+    <div class="timer-sub" id="stageDesc">단계 남은 시간</div>
+    <div class="targets" id="targets"></div>
+  </div>
+
+  <div class="total">
+    <span>총 경과 <b id="elapsed">00:00</b></span>
+    <span>전체 <b>40:00</b></span>
+  </div>
+
+  <div class="controls">
+    <button id="startBtn">시작</button>
+    <button id="resetBtn">리셋</button>
+  </div>
+
+  <div class="mute-row">
+    <label><input type="checkbox" id="muteBox"> 음성 멘트 끄기</label>
+  </div>
+
+  <div class="done-msg" id="doneMsg">오늘도 완주했습니다.<br>다음엔 같은 심박으로 조금 더 빨라져 있을 거예요.</div>
+</div>
+
+<script>
+const phases = [
+  {name:"1 · 웜업", title:"천천히 몸 풀기", sec:300, color:"#5B8DEF",
+   speed:"4→6", hr:"~128",
+   say:"웜업을 시작합니다. 걷기로 시작해서 천천히 조깅으로 넘어가세요. 서두르지 마세요.",
+   mid:null},
+  {name:"2 · 페이스 진입", title:"목표 페이스로 진입", sec:300, color:"#4FC3D9",
+   speed:"6.5→7", hr:"<144",
+   say:"페이스 진입 구간입니다. 심박이 백사십사를 넘지 않는지 확인하면서 속도를 올리세요.",
+   mid:null},
+  {name:"3 · 메인 유지", title:"에코 페이스 고정", sec:1080, color:"#F2C14E",
+   speed:"7~7.5", hr:"128–144",
+   say:"메인 구간입니다. 이 페이스를 십팔분 동안 유지하세요. 속도를 올리고 싶어져도 참으세요.",
+   mid:"절반 지났습니다. 심박이 백사십사에 가까우면 속도를 0.5 낮추세요."},
+  {name:"4 · 선택 업", title:"컨디션 되면 살짝 업", sec:420, color:"#E8845A",
+   speed:"7.5→8", hr:"~144",
+   say:"컨디션이 괜찮다면 속도를 살짝 올려도 좋습니다. 심박이 백사십사를 넘으면 바로 0.5 낮추세요.",
+   mid:null},
+  {name:"5 · 쿨다운", title:"천천히 마무리", sec:300, color:"#7C8895",
+   speed:"4→5", hr:"낮추기",
+   say:"쿨다운입니다. 속도를 천천히 낮추고 심박을 안정시키세요.",
+   mid:null},
+];
+const totalSec = phases.reduce((a,p)=>a+p.sec,0);
+
+let curPhase=0, remainInPhase=phases[0].sec, elapsed=0, running=false, timerId=null, midSaid=false;
+
+const el = id => document.getElementById(id);
+const fmt = s => String(Math.floor(s/60)).padStart(2,'0')+":"+String(s%60).padStart(2,'0');
+
+function buildTimeline(){
+  const tl = el('timeline'), lb = el('segLabels');
+  tl.innerHTML=''; lb.innerHTML='';
+  phases.forEach((p,i)=>{
+    const seg = document.createElement('div'); seg.className='seg'; seg.id='seg'+i;
+    seg.innerHTML = '<div class="fill" style="background:'+p.color+'"></div>';
+    tl.appendChild(seg);
+    const label = document.createElement('span'); label.textContent = (i+1);
+    lb.appendChild(label);
+  });
+}
+
+function speak(text){
+  if(el('muteBox').checked) return;
+  if(!('speechSynthesis' in window)) return;
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang='ko-KR'; u.rate=1.0;
+  speechSynthesis.cancel();
+  speechSynthesis.speak(u);
+}
+
+function renderPhase(){
+  const p = phases[curPhase];
+  document.body.style.setProperty('--phase', p.color);
+  el('stageName').textContent = p.name;
+  el('stageTitle').textContent = p.title;
+  el('timer').textContent = fmt(remainInPhase);
+  el('targets').innerHTML =
+    '<div class="target"><div class="num">'+p.speed+'</div><div class="lbl">km/h</div></div>'+
+    '<div class="target"><div class="num">'+p.hr+'</div><div class="lbl">목표 심박</div></div>';
+  document.querySelectorAll('.seg').forEach((s,i)=>{
+    s.classList.toggle('done', i<curPhase);
+    const fill = s.querySelector('.fill');
+    if(i===curPhase){ fill.style.width = ((p.sec-remainInPhase)/p.sec*100)+'%'; fill.style.background=p.color; }
+    else if(i>curPhase){ fill.style.width='0%'; }
+  });
+  el('elapsed').textContent = fmt(elapsed);
+}
+
+function tick(){
+  remainInPhase--; elapsed++;
+  const p = phases[curPhase];
+  if(p.mid && !midSaid && remainInPhase === Math.floor(p.sec/2)){
+    speak(p.mid); midSaid = true;
+  }
+  if(remainInPhase <= 0){
+    curPhase++;
+    if(curPhase >= phases.length){
+      finish(); return;
+    }
+    remainInPhase = phases[curPhase].sec;
+    midSaid = false;
+    speak(phases[curPhase].say);
+  }
+  renderPhase();
+}
+
+function finish(){
+  clearInterval(timerId); running=false;
+  el('mainCard').style.display='none';
+  el('doneMsg').style.display='block';
+  el('startBtn').textContent='다시 시작';
+  speak("수고하셨습니다. 오늘 러닝을 완료했습니다.");
+}
+
+el('startBtn').addEventListener('click', ()=>{
+  if(el('doneMsg').style.display==='block'){
+    resetAll(); return;
+  }
+  if(!running){
+    running=true; el('startBtn').textContent='일시정지';
+    if(elapsed===0 && curPhase===0 && remainInPhase===phases[0].sec){ speak(phases[0].say); }
+    timerId = setInterval(tick, 1000);
+  } else {
+    running=false; el('startBtn').textContent='계속'; clearInterval(timerId);
+  }
+});
+
+function resetAll(){
+  clearInterval(timerId); running=false;
+  curPhase=0; remainInPhase=phases[0].sec; elapsed=0; midSaid=false;
+  el('startBtn').textContent='시작';
+  el('mainCard').style.display='block';
+  el('doneMsg').style.display='none';
+  buildTimeline();
+  renderPhase();
+}
+
+el('resetBtn').addEventListener('click', resetAll);
+
+buildTimeline();
+renderPhase();
+</script>
+</body>
+</html>
